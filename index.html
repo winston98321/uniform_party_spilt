@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Split Bill 分帳神器</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --surface2: #22222f;
+    --border: #2e2e3e;
+    --text: #e8e6f0;
+    --text-dim: #8b89a0;
+    --accent: #6c63ff;
+    --accent-glow: rgba(108, 99, 255, 0.25);
+    --green: #2dd4a8;
+    --green-glow: rgba(45, 212, 168, 0.2);
+    --red: #ff6b6b;
+    --orange: #ffb347;
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans TC', 'Outfit', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(ellipse at 30% 20%, rgba(108,99,255,0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(45,212,168,0.04) 0%, transparent 50%);
+    pointer-events: none; z-index: 0;
+  }
+  .app {
+    position: relative; z-index: 1;
+    max-width: 520px; margin: 0 auto; padding: 24px 16px 100px;
+  }
+
+  /* LOBBY */
+  .lobby {
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 32px 20px; position: relative; z-index: 1;
+  }
+  .lobby-logo {
+    font-family: 'Outfit', sans-serif; font-size: 3rem; font-weight: 800;
+    background: linear-gradient(135deg, #6c63ff, #2dd4a8);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+  }
+  .lobby-sub { color: var(--text-dim); font-size: 1rem; margin-bottom: 40px; }
+  .lobby-card {
+    width: 100%; max-width: 400px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 28px 24px;
+    margin-bottom: 16px; text-align: center;
+  }
+  .lobby-card h2 {
+    font-family: 'Outfit', sans-serif; font-size: 1.1rem;
+    font-weight: 600; margin-bottom: 16px; color: var(--text);
+  }
+  .lobby-card input {
+    width: 100%; padding: 14px 16px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-size: 1.1rem; font-family: 'Outfit', sans-serif;
+    text-align: center; letter-spacing: 4px; text-transform: uppercase;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    margin-bottom: 14px;
+  }
+  .lobby-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  .lobby-card input::placeholder { color: var(--text-dim); opacity: 0.5; letter-spacing: 2px; }
+
+  .btn-primary {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, #6c63ff, #5a52e0);
+    border: none; border-radius: var(--radius-sm);
+    color: #fff; font-size: 1rem; font-weight: 600;
+    font-family: inherit; cursor: pointer; transition: all 0.2s;
+    box-shadow: 0 4px 20px var(--accent-glow);
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 28px var(--accent-glow); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-secondary {
+    width: 100%; padding: 14px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-size: 1rem; font-weight: 600; font-family: inherit;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-secondary:hover { border-color: var(--accent); background: rgba(108,99,255,0.08); }
+  .lobby-divider { color: var(--text-dim); font-size: 0.85rem; margin: 4px 0; }
+
+  /* ROOM BAR */
+  .room-bar {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; padding: 10px 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .room-bar .room-label { color: var(--text-dim); font-size: 0.82rem; }
+  .room-bar .room-code {
+    font-family: 'Outfit', sans-serif; font-weight: 700;
+    font-size: 1.05rem; letter-spacing: 3px;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .room-bar button {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-dim); padding: 5px 10px; border-radius: 6px;
+    font-size: 0.78rem; cursor: pointer; font-family: inherit; transition: all 0.2s;
+  }
+  .room-bar button:hover { border-color: var(--accent); color: var(--text); }
+  .room-bar .btn-leave:hover { border-color: var(--red); color: var(--red); }
+
+  .sync-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 6px var(--green-glow);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* HEADER */
+  .header { text-align: center; padding: 12px 0 20px; }
+  .header h1 {
+    font-family: 'Outfit', sans-serif; font-size: 2rem; font-weight: 800;
+    background: linear-gradient(135deg, #6c63ff, #2dd4a8);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .header p { color: var(--text-dim); font-size: 0.85rem; margin-top: 4px; }
+
+  /* CARD */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px;
+    margin-bottom: 16px; animation: fadeUp 0.4s ease both;
+  }
+  .card-title {
+    font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text-dim); margin-bottom: 16px;
+  }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+  /* INPUTS */
+  .input-group { margin-bottom: 16px; }
+  .input-group label { display: block; font-size: 0.85rem; color: var(--text-dim); margin-bottom: 6px; font-weight: 500; }
+  .input-group input, .input-group select {
+    width: 100%; padding: 12px 16px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-size: 1rem; font-family: inherit; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .input-group input:focus, .input-group select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  .input-group input::placeholder { color: var(--text-dim); opacity: 0.5; }
+
+  /* CHIPS */
+  .people-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .chip {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    gap: 8px; padding: 12px 8px;
+    background: var(--surface2); border: 2px solid var(--border);
+    border-radius: var(--radius-sm); cursor: pointer;
+    transition: all 0.2s; user-select: none; font-weight: 500; font-size: 0.95rem;
+  }
+  .chip:hover { border-color: var(--accent); background: rgba(108,99,255,0.08); }
+  .chip.active { border-color: var(--accent); background: rgba(108,99,255,0.15); box-shadow: 0 0 12px var(--accent-glow); }
+  .chip .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .chip .check {
+    position: absolute; top: -6px; right: -6px;
+    width: 20px; height: 20px; background: var(--accent); border-radius: 50%;
+    display: none; align-items: center; justify-content: center;
+    font-size: 11px; box-shadow: 0 2px 6px var(--accent-glow);
+  }
+  .chip.active .check { display: flex; }
+
+  .select-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .select-actions button {
+    flex: 1; padding: 8px; background: transparent;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text-dim); font-size: 0.8rem; cursor: pointer;
+    font-family: inherit; transition: all 0.2s;
+  }
+  .select-actions button:hover { border-color: var(--accent); color: var(--text); }
+
+  .btn-add {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, #6c63ff, #5a52e0);
+    border: none; border-radius: var(--radius-sm);
+    color: #fff; font-size: 1rem; font-weight: 600;
+    font-family: inherit; cursor: pointer; transition: all 0.2s;
+    box-shadow: 0 4px 20px var(--accent-glow);
+  }
+  .btn-add:hover { transform: translateY(-1px); box-shadow: 0 6px 28px var(--accent-glow); }
+
+  /* RECORDS */
+  .record {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px 0; border-bottom: 1px solid var(--border);
+    animation: fadeUp 0.3s ease both;
+  }
+  .record:last-child { border-bottom: none; }
+  .record-icon {
+    width: 40px; height: 40px; border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; flex-shrink: 0; background: var(--surface2);
+  }
+  .record-info { flex: 1; min-width: 0; }
+  .record-info .title { font-weight: 600; font-size: 0.95rem; margin-bottom: 2px; display: flex; align-items: center; gap: 8px; }
+  .record-info .title .payer-badge { font-size: 0.7rem; background: rgba(108,99,255,0.2); color: var(--accent); padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+  .record-info .people-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .record-info .people-tags span { font-size: 0.7rem; padding: 2px 8px; background: var(--surface2); border-radius: 20px; color: var(--text-dim); }
+  .record-amount { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.1rem; white-space: nowrap; color: var(--green); }
+  .record-delete { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 1.1rem; padding: 4px; opacity: 0.4; transition: all 0.2s; }
+  .record-delete:hover { opacity: 1; color: var(--red); }
+
+  /* SUMMARY */
+  .summary-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .summary-row:last-child { border-bottom: none; }
+  .summary-row .name { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+  .summary-row .name .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .summary-row .amount { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.05rem; }
+  .amount.positive { color: var(--green); }
+  .amount.negative { color: var(--red); }
+
+  /* SETTLE */
+  .settle-item {
+    display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+    background: var(--surface2); border-radius: var(--radius-sm);
+    margin-bottom: 8px; font-size: 0.92rem; animation: fadeUp 0.3s ease both;
+  }
+  .settle-arrow { color: var(--accent); font-size: 1.2rem; flex-shrink: 0; }
+  .settle-amount { margin-left: auto; font-family: 'Outfit', sans-serif; font-weight: 700; color: var(--orange); }
+
+  .empty-state { text-align: center; padding: 32px 16px; color: var(--text-dim); font-size: 0.9rem; }
+  .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+  /* TABS */
+  .tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px; margin-bottom: 16px; }
+  .tab { flex: 1; padding: 10px; background: none; border: none; color: var(--text-dim); font-size: 0.88rem; font-weight: 500; cursor: pointer; border-radius: 8px; font-family: inherit; transition: all 0.2s; }
+  .tab.active { background: var(--accent); color: #fff; }
+
+  /* TOTAL BAR */
+  .total-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: 14px 24px; display: flex; justify-content: center;
+    align-items: center; gap: 12px; backdrop-filter: blur(16px); z-index: 100;
+  }
+  .total-bar span { color: var(--text-dim); font-size: 0.9rem; }
+  .total-bar strong { font-family: 'Outfit', sans-serif; font-size: 1.4rem; font-weight: 800; color: var(--green); }
+
+  .btn-reset {
+    background: none; border: 1px solid var(--border); color: var(--red);
+    padding: 10px 20px; border-radius: var(--radius-sm); cursor: pointer;
+    font-family: inherit; font-size: 0.85rem; transition: all 0.2s; margin-top: 8px;
+  }
+  .btn-reset:hover { border-color: var(--red); background: rgba(255,107,107,0.1); }
+  select option { background: var(--surface2); color: var(--text); }
+
+  .toast {
+    position: fixed; top: 20px; left: 50%;
+    transform: translateX(-50%) translateY(-80px);
+    background: var(--surface); border: 1px solid var(--accent);
+    color: var(--text); padding: 12px 24px; border-radius: var(--radius-sm);
+    font-size: 0.9rem; z-index: 200; transition: transform 0.3s ease;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<!-- LOBBY -->
+<div class="lobby" id="lobbyScreen">
+  <div class="lobby-logo">💰 Split Bill</div>
+  <div class="lobby-sub">朋友分帳不傷感情</div>
+  <div class="lobby-card">
+    <h2>🆕 建立新房間</h2>
+    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:14px">開一個新的分帳房間，分享代碼給朋友</p>
+    <button class="btn-primary" onclick="createRoom()">建立房間</button>
+  </div>
+  <div class="lobby-divider">— 或 —</div>
+  <div class="lobby-card">
+    <h2>🔗 加入房間</h2>
+    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:14px">輸入房間代碼加入現有分帳</p>
+    <input type="text" id="joinCode" placeholder="輸入代碼" maxlength="6">
+    <button class="btn-secondary" onclick="joinRoom()">加入</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app hidden" id="mainApp">
+  <div class="room-bar">
+    <div class="sync-dot"></div>
+    <span class="room-label">房間</span>
+    <span class="room-code" id="roomCodeDisplay"></span>
+    <button onclick="copyRoomCode()">📋 複製</button>
+    <button onclick="copyShareLink()">🔗 分享連結</button>
+    <button class="btn-leave" onclick="leaveRoom()">離開</button>
+  </div>
+
+  <div class="header">
+    <h1>💰 Split Bill</h1>
+    <p>即時同步 · 所有人看到同一份帳</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📝 新增消費</div>
+    <div class="input-group">
+      <label>項目名稱</label>
+      <input type="text" id="itemName" placeholder="例：晚餐、計程車...">
+    </div>
+    <div class="input-group">
+      <label>金額 (TWD)</label>
+      <input type="number" id="itemAmount" placeholder="0" min="0">
+    </div>
+    <div class="input-group">
+      <label>誰付的？</label>
+      <select id="payer"></select>
+    </div>
+    <div class="input-group">
+      <label>分給誰？</label>
+      <div class="people-grid" id="peopleGrid"></div>
+      <div class="select-actions">
+        <button onclick="selectAll()">全選</button>
+        <button onclick="selectNone()">取消全選</button>
+      </div>
+    </div>
+    <button class="btn-add" onclick="addExpense()">＋ 加入帳單</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('records', this)">📋 明細</button>
+    <button class="tab" onclick="switchTab('summary', this)">📊 總覽</button>
+    <button class="tab" onclick="switchTab('settle', this)">🤝 結算</button>
+  </div>
+
+  <div class="card" id="recordsPanel">
+    <div class="card-title">消費明細</div>
+    <div id="recordsList"></div>
+  </div>
+  <div class="card hidden" id="summaryPanel">
+    <div class="card-title">每人總覽</div>
+    <div id="summaryList"></div>
+  </div>
+  <div class="card hidden" id="settlePanel">
+    <div class="card-title">最簡轉帳方案</div>
+    <div id="settleList"></div>
+  </div>
+
+  <div style="text-align:center; margin-top: 8px;">
+    <button class="btn-reset" onclick="resetAll()">🗑️ 清除所有紀錄</button>
+  </div>
+</div>
+
+<div class="total-bar hidden" id="totalBar">
+  <span>總花費</span>
+  <strong id="totalDisplay">$0</strong>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+<script>
+// ============================================================
+//  🔧 FIREBASE CONFIG — 請替換成你自己的！
+//  
+//  步驟：
+//  1. 到 https://console.firebase.google.com 建立免費專案
+//  2. 左選單 → Build → Realtime Database → Create Database
+//     → 選 Start in TEST mode
+//  3. 專案設定 (齒輪) → 「您的應用程式」→ 新增 Web 應用
+//  4. 複製 firebaseConfig 貼到下方
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyAbbdfPcOoZcuLZQG-zXAdrZgtPFaOuAZA",
+  authDomain: "up-database-a9f96.firebaseapp.com",
+  databaseURL: "https://up-database-a9f96-default-rtdb.firebaseio.com",
+  projectId: "up-database-a9f96",
+  storageBucket: "up-database-a9f96.firebasestorage.app",
+  messagingSenderId: "770564448901",
+  appId: "1:770564448901:web:670266415501e8ada67fec"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const PEOPLE = [
+  { name: 'May',     color: '#ff6b9d' },
+  { name: 'Sun',     color: '#ffa63e' },
+  { name: 'Patrick', color: '#6c63ff' },
+  { name: 'Kai',     color: '#2dd4a8' },
+  { name: 'Ariel',   color: '#ff6b6b' },
+  { name: 'Bella',   color: '#a78bfa' },
+];
+
+let expenses = [];
+let selected = new Set(PEOPLE.map(p => p.name));
+let currentRoom = null;
+let dbRef = null;
+
+// === ROOM ===
+function generateCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+function createRoom() {
+  const code = generateCode();
+  db.ref('rooms/' + code).set({ created: Date.now(), expenses: {} })
+    .then(() => enterRoom(code))
+    .catch(() => showToast('❌ 建立失敗，請檢查 Firebase 設定'));
+}
+
+function joinRoom() {
+  const code = document.getElementById('joinCode').value.trim().toUpperCase();
+  if (!code || code.length < 4) { showToast('請輸入房間代碼'); return; }
+  db.ref('rooms/' + code).once('value').then(snap => {
+    if (snap.exists()) enterRoom(code);
+    else showToast('❌ 房間不存在');
+  });
+}
+
+function enterRoom(code) {
+  currentRoom = code;
+  localStorage.setItem('splitBillRoom', code);
+  // Update URL without reload
+  const url = new URL(window.location);
+  url.searchParams.set('room', code);
+  window.history.replaceState({}, '', url);
+
+  document.getElementById('lobbyScreen').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+  document.getElementById('totalBar').classList.remove('hidden');
+  document.getElementById('roomCodeDisplay').textContent = code;
+
+  dbRef = db.ref('rooms/' + code + '/expenses');
+  dbRef.on('value', snap => {
+    const data = snap.val();
+    expenses = data ? Object.values(data) : [];
+    expenses.sort((a, b) => a.id - b.id);
+    render();
+  });
+}
+
+function leaveRoom() {
+  if (dbRef) dbRef.off();
+  currentRoom = null;
+  localStorage.removeItem('splitBillRoom');
+  const url = new URL(window.location);
+  url.searchParams.delete('room');
+  window.history.replaceState({}, '', url);
+  document.getElementById('lobbyScreen').classList.remove('hidden');
+  document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('totalBar').classList.add('hidden');
+}
+
+function copyRoomCode() {
+  navigator.clipboard.writeText(currentRoom)
+    .then(() => showToast('✅ 已複製代碼：' + currentRoom));
+}
+
+function copyShareLink() {
+  const url = new URL(window.location);
+  url.searchParams.set('room', currentRoom);
+  navigator.clipboard.writeText(url.toString())
+    .then(() => showToast('✅ 已複製分享連結'));
+}
+
+function checkAutoJoin() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('room') || localStorage.getItem('splitBillRoom');
+  if (code) {
+    db.ref('rooms/' + code).once('value').then(snap => {
+      if (snap.exists()) enterRoom(code);
+    });
+  }
+}
+
+// === UI INIT ===
+function initUI() {
+  const payerSel = document.getElementById('payer');
+  PEOPLE.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name; opt.textContent = p.name;
+    payerSel.appendChild(opt);
+  });
+  const grid = document.getElementById('peopleGrid');
+  PEOPLE.forEach(p => {
+    const chip = document.createElement('div');
+    chip.className = 'chip active';
+    chip.dataset.name = p.name;
+    chip.innerHTML = `<div class="avatar" style="background:${p.color}">${p.name[0]}</div>${p.name}<div class="check">✓</div>`;
+    chip.onclick = () => togglePerson(p.name, chip);
+    grid.appendChild(chip);
+  });
+  checkAutoJoin();
+}
+
+// === EXPENSE CRUD ===
+function togglePerson(name, el) {
+  if (selected.has(name)) { selected.delete(name); el.classList.remove('active'); }
+  else { selected.add(name); el.classList.add('active'); }
+}
+function selectAll() {
+  selected = new Set(PEOPLE.map(p => p.name));
+  document.querySelectorAll('.chip').forEach(c => c.classList.add('active'));
+}
+function selectNone() {
+  selected.clear();
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+}
+
+function addExpense() {
+  const name = document.getElementById('itemName').value.trim();
+  const amount = parseFloat(document.getElementById('itemAmount').value);
+  const payer = document.getElementById('payer').value;
+  if (!name) { shake('itemName'); return; }
+  if (!amount || amount <= 0) { shake('itemAmount'); return; }
+  if (selected.size === 0) { showToast('請至少選一個人分帳！'); return; }
+
+  const id = Date.now();
+  db.ref('rooms/' + currentRoom + '/expenses/' + id)
+    .set({ id, name, amount, payer, people: [...selected] })
+    .then(() => showToast('✅ 已新增'))
+    .catch(() => showToast('❌ 新增失敗'));
+
+  document.getElementById('itemName').value = '';
+  document.getElementById('itemAmount').value = '';
+  selectAll();
+}
+
+function deleteExpense(id) {
+  db.ref('rooms/' + currentRoom + '/expenses/' + id).remove()
+    .then(() => showToast('已刪除'));
+}
+
+function resetAll() {
+  if (confirm('確定要清除所有紀錄嗎？\n所有人都會同步清除！')) {
+    db.ref('rooms/' + currentRoom + '/expenses').remove();
+  }
+}
+
+// === RENDER ===
+function getColor(name) { return PEOPLE.find(p => p.name === name)?.color || '#888'; }
+
+function render() {
+  renderRecords();
+  renderSummary();
+  renderSettle();
+  const total = expenses.reduce((s, e) => s + e.amount, 0);
+  document.getElementById('totalDisplay').textContent = '$' + total.toLocaleString();
+}
+
+function renderRecords() {
+  const list = document.getElementById('recordsList');
+  if (!expenses.length) {
+    list.innerHTML = '<div class="empty-state"><div class="icon">🧾</div>還沒有消費紀錄<br>加一筆吧！</div>';
+    return;
+  }
+  list.innerHTML = expenses.slice().reverse().map(e => `
+    <div class="record">
+      <div class="record-icon">🧾</div>
+      <div class="record-info">
+        <div class="title">${e.name}<span class="payer-badge">${e.payer} 付</span></div>
+        <div class="people-tags">${e.people.map(p => `<span style="border-left:2px solid ${getColor(p)}">${p}</span>`).join('')}</div>
+      </div>
+      <div class="record-amount">$${e.amount.toLocaleString()}</div>
+      <button class="record-delete" onclick="deleteExpense(${e.id})" title="刪除">✕</button>
+    </div>`).join('');
+}
+
+function calcBalances() {
+  const b = {};
+  PEOPLE.forEach(p => b[p.name] = 0);
+  expenses.forEach(e => {
+    const share = e.amount / e.people.length;
+    b[e.payer] += e.amount;
+    e.people.forEach(p => b[p] -= share);
+  });
+  return b;
+}
+
+function renderSummary() {
+  const list = document.getElementById('summaryList');
+  if (!expenses.length) { list.innerHTML = '<div class="empty-state">尚無資料</div>'; return; }
+  const balances = calcBalances();
+  list.innerHTML = PEOPLE.map(p => {
+    const bal = balances[p.name];
+    const cls = bal >= 0 ? 'positive' : 'negative';
+    const sign = bal >= 0 ? '+' : '';
+    return `<div class="summary-row"><div class="name"><div class="dot" style="background:${p.color}"></div>${p.name}</div><div class="amount ${cls}">${sign}$${Math.round(bal).toLocaleString()}</div></div>`;
+  }).join('');
+}
+
+function renderSettle() {
+  const list = document.getElementById('settleList');
+  if (!expenses.length) { list.innerHTML = '<div class="empty-state">加入消費後就能看到結算方案</div>'; return; }
+  const balances = calcBalances();
+  const debtors = [], creditors = [];
+  PEOPLE.forEach(p => {
+    const b = Math.round(balances[p.name]);
+    if (b < 0) debtors.push({ name: p.name, amount: -b });
+    else if (b > 0) creditors.push({ name: p.name, amount: b });
+  });
+  debtors.sort((a, b) => b.amount - a.amount);
+  creditors.sort((a, b) => b.amount - a.amount);
+
+  const transfers = [];
+  let i = 0, j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const amt = Math.min(debtors[i].amount, creditors[j].amount);
+    if (amt > 0) transfers.push({ from: debtors[i].name, to: creditors[j].name, amount: amt });
+    debtors[i].amount -= amt;
+    creditors[j].amount -= amt;
+    if (debtors[i].amount === 0) i++;
+    if (creditors[j].amount === 0) j++;
+  }
+
+  if (!transfers.length) { list.innerHTML = '<div class="empty-state"><div class="icon">✅</div>大家都結清了！</div>'; return; }
+  list.innerHTML = transfers.map(t => `
+    <div class="settle-item">
+      <div style="width:10px;height:10px;border-radius:50%;background:${getColor(t.from)};flex-shrink:0"></div>
+      <strong>${t.from}</strong>
+      <span class="settle-arrow">→</span>
+      <div style="width:10px;height:10px;border-radius:50%;background:${getColor(t.to)};flex-shrink:0"></div>
+      <strong>${t.to}</strong>
+      <span class="settle-amount">$${t.amount.toLocaleString()}</span>
+    </div>`).join('');
+}
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('recordsPanel').classList.toggle('hidden', tab !== 'records');
+  document.getElementById('summaryPanel').classList.toggle('hidden', tab !== 'summary');
+  document.getElementById('settlePanel').classList.toggle('hidden', tab !== 'settle');
+}
+
+// === UTILS ===
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+function shake(id) {
+  const el = document.getElementById(id);
+  el.style.animation = 'none'; el.offsetHeight;
+  el.style.animation = 'shake 0.4s ease';
+}
+
+initUI();
+</script>
+</body>
+</html>
