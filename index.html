@@ -285,6 +285,17 @@
   .toast.show { transform: translateX(-50%) translateY(0); }
   @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
   .hidden { display: none !important; }
+
+  /* Identity picker */
+  #identityGrid .chip {
+    padding: 18px 12px;
+  }
+  #identityGrid .chip .avatar {
+    width: 80px; height: 80px;
+    border: 3px solid var(--border);
+  }
+  #identityGrid .chip:hover .avatar { border-color: var(--accent); }
+  #identityGrid .chip { font-size: 1rem; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -304,19 +315,30 @@
   <div id="recentEvents" style="width:100%;max-width:400px;margin-top:8px"></div>
 </div>
 
+<!-- IDENTITY PICKER -->
+<div class="lobby hidden" id="identityScreen">
+  <div class="lobby-logo">👋 你是誰？</div>
+  <div class="lobby-sub" id="identityEventName"></div>
+  <div class="lobby-card" style="padding:24px 20px">
+    <div class="people-grid" id="identityGrid" style="grid-template-columns: repeat(2, 1fr); gap: 12px;"></div>
+  </div>
+</div>
+
 <!-- MAIN APP -->
 <div class="app hidden" id="mainApp">
   <div class="room-bar">
     <div class="sync-dot"></div>
     <span class="room-label">📌</span>
     <span class="room-code" id="roomCodeDisplay" style="letter-spacing:0.5px"></span>
-    <button onclick="copyShareLink()">🔗 分享連結</button>
+    <span style="color:var(--border)">·</span>
+    <span id="userBadge" style="display:flex;align-items:center;gap:4px;font-size:0.82rem;color:var(--text-dim)"></span>
+    <button onclick="copyShareLink()">🔗 分享</button>
     <button class="btn-leave" onclick="leaveRoom()">離開</button>
   </div>
 
   <div class="header">
     <h1>💰 Split Bill</h1>
-    <p>制服趴對帳神器</p>
+    <p>即時同步 · 所有人看到同一份帳</p>
   </div>
 
   <div class="card">
@@ -423,6 +445,7 @@ const PEOPLE = [
 let expenses = [];
 let selected = new Set(PEOPLE.map(p => p.name));
 let currentRoom = null;
+let currentUser = null;
 let dbRef = null;
 
 // === ROOM (event-name based) ===
@@ -448,17 +471,57 @@ function enterRoom(key, displayName) {
   currentRoom = key;
   const roomInfo = { key, displayName: displayName || key };
   localStorage.setItem('splitBillRoom', JSON.stringify(roomInfo));
-  // Save to recent events
   saveRecentEvent(roomInfo);
-  // Update URL
   const url = new URL(window.location);
   url.searchParams.set('room', key);
   window.history.replaceState({}, '', url);
 
+  // Check if user already picked identity for this room
+  const savedUser = localStorage.getItem('splitBillUser_' + key);
+  if (savedUser && PEOPLE.find(p => p.name === savedUser)) {
+    currentUser = savedUser;
+    showMainApp(key, displayName);
+  } else {
+    showIdentityPicker(key, displayName);
+  }
+}
+
+function showIdentityPicker(key, displayName) {
+  document.getElementById('lobbyScreen').classList.add('hidden');
+  document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('totalBar').classList.add('hidden');
+  document.getElementById('identityScreen').classList.remove('hidden');
+  document.getElementById('identityEventName').textContent = displayName || decodeURIComponent(key);
+
+  const grid = document.getElementById('identityGrid');
+  grid.innerHTML = '';
+  PEOPLE.forEach(p => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `<div class="avatar"><img src="images/${p.name}.png" alt="${p.name}"></div>${p.name}`;
+    chip.onclick = () => {
+      currentUser = p.name;
+      localStorage.setItem('splitBillUser_' + key, p.name);
+      showMainApp(key, displayName);
+    };
+    grid.appendChild(chip);
+  });
+}
+
+function showMainApp(key, displayName) {
+  document.getElementById('identityScreen').classList.add('hidden');
   document.getElementById('lobbyScreen').classList.add('hidden');
   document.getElementById('mainApp').classList.remove('hidden');
   document.getElementById('totalBar').classList.remove('hidden');
   document.getElementById('roomCodeDisplay').textContent = displayName || decodeURIComponent(key);
+
+  // Show user badge in room bar
+  document.getElementById('userBadge').innerHTML =
+    `<div style="width:22px;height:22px;border-radius:50%;overflow:hidden"><img src="images/${currentUser}.png" style="width:100%;height:100%;object-fit:cover"></div>${currentUser}`;
+
+  // Set payer default to current user
+  const payerSel = document.getElementById('payer');
+  payerSel.value = currentUser;
 
   dbRef = db.ref('rooms/' + key + '/expenses');
   dbRef.on('value', snap => {
@@ -471,11 +534,14 @@ function enterRoom(key, displayName) {
 
 function leaveRoom() {
   if (dbRef) dbRef.off();
+  if (currentRoom) localStorage.removeItem('splitBillUser_' + currentRoom);
   currentRoom = null;
+  currentUser = null;
   localStorage.removeItem('splitBillRoom');
   const url = new URL(window.location);
   url.searchParams.delete('room');
   window.history.replaceState({}, '', url);
+  document.getElementById('identityScreen').classList.add('hidden');
   document.getElementById('lobbyScreen').classList.remove('hidden');
   document.getElementById('mainApp').classList.add('hidden');
   document.getElementById('totalBar').classList.add('hidden');
