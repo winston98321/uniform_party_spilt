@@ -166,19 +166,22 @@
   /* CHIPS */
   .people-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .chip {
-    position: relative; display: flex; align-items: center; justify-content: center;
-    gap: 8px; padding: 12px 8px;
+    position: relative; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 6px; padding: 14px 8px 12px;
     background: var(--surface2); border: 2px solid var(--border);
     border-radius: var(--radius-sm); cursor: pointer;
-    transition: all 0.2s; user-select: none; font-weight: 500; font-size: 0.95rem;
+    transition: all 0.2s; user-select: none; font-weight: 500; font-size: 0.85rem;
   }
   .chip:hover { border-color: var(--accent); background: rgba(108,99,255,0.08); }
   .chip.active { border-color: var(--accent); background: rgba(108,99,255,0.15); box-shadow: 0 0 12px var(--accent-glow); }
   .chip .avatar {
-    width: 28px; height: 28px; border-radius: 50%;
+    width: 64px; height: 64px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.75rem; font-weight: 700; color: #fff; flex-shrink: 0;
+    flex-shrink: 0; overflow: hidden; background: var(--surface2);
+    border: 2px solid var(--border);
   }
+  .chip.active .avatar { border-color: var(--accent); }
+  .chip .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
   .chip .check {
     position: absolute; top: -6px; right: -6px;
     width: 20px; height: 20px; background: var(--accent); border-radius: 50%;
@@ -293,33 +296,27 @@
   <div class="lobby-logo">💰 Split Bill</div>
   <div class="lobby-sub">朋友分帳不傷感情</div>
   <div class="lobby-card">
-    <h2>🆕 建立新房間</h2>
-    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:14px">開一個新的分帳房間，分享代碼給朋友</p>
-    <button class="btn-primary" onclick="createRoom()">建立房間</button>
+    <h2>📌 建立 / 加入事件</h2>
+    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:14px">輸入事件名稱，同名即同房間<br>例如：日本旅行、0523聚餐</p>
+    <input type="text" id="eventName" placeholder="輸入事件名稱" maxlength="30" style="letter-spacing:1px;text-transform:none;">
+    <button class="btn-primary" onclick="enterEvent()">進入</button>
   </div>
-  <div class="lobby-divider">— 或 —</div>
-  <div class="lobby-card">
-    <h2>🔗 加入房間</h2>
-    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:14px">輸入房間代碼加入現有分帳</p>
-    <input type="text" id="joinCode" placeholder="輸入代碼" maxlength="6">
-    <button class="btn-secondary" onclick="joinRoom()">加入</button>
-  </div>
+  <div id="recentEvents" style="width:100%;max-width:400px;margin-top:8px"></div>
 </div>
 
 <!-- MAIN APP -->
 <div class="app hidden" id="mainApp">
   <div class="room-bar">
     <div class="sync-dot"></div>
-    <span class="room-label">房間</span>
-    <span class="room-code" id="roomCodeDisplay"></span>
-    <button onclick="copyRoomCode()">📋 複製</button>
+    <span class="room-label">📌</span>
+    <span class="room-code" id="roomCodeDisplay" style="letter-spacing:0.5px"></span>
     <button onclick="copyShareLink()">🔗 分享連結</button>
     <button class="btn-leave" onclick="leaveRoom()">離開</button>
   </div>
 
   <div class="header">
     <h1>💰 Split Bill</h1>
-    <p>即時同步 · 所有人看到同一份帳</p>
+    <p>制服趴對帳神器</p>
   </div>
 
   <div class="card">
@@ -404,6 +401,16 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+// 頭像圖片
+const AVATARS = {
+  May:     `<img src="images/May.png" alt="May">`,
+  Sun:     `<img src="images/Sun.png" alt="Sun">`,
+  Patrick: `<img src="images/Patrick.png" alt="Patrick">`,
+  Kai:     `<img src="images/Kai.png" alt="Kai">`,
+  Ariel:   `<img src="images/Ariel.png" alt="Ariel">`,
+  Bella:   `<img src="images/Bella.png" alt="Bella">`,
+};
+
 const PEOPLE = [
   { name: 'May',     color: '#ff6b9d' },
   { name: 'Sun',     color: '#ffa63e' },
@@ -418,44 +425,42 @@ let selected = new Set(PEOPLE.map(p => p.name));
 let currentRoom = null;
 let dbRef = null;
 
-// === ROOM ===
-function generateCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
+// === ROOM (event-name based) ===
+function nameToKey(name) {
+  // Firebase key 不能有 . # $ [ ] /，用 encodeURIComponent 轉換
+  return encodeURIComponent(name.trim()).replace(/\./g, '%2E');
 }
 
-function createRoom() {
-  const code = generateCode();
-  db.ref('rooms/' + code).set({ created: Date.now(), expenses: {} })
-    .then(() => enterRoom(code))
-    .catch(() => showToast('❌ 建立失敗，請檢查 Firebase 設定'));
+function enterEvent() {
+  const name = document.getElementById('eventName').value.trim();
+  if (!name) { showToast('請輸入事件名稱'); return; }
+  const key = nameToKey(name);
+  // 不管存不存在都直接進入，不存在會自動建立
+  db.ref('rooms/' + key).once('value').then(snap => {
+    if (!snap.exists()) {
+      db.ref('rooms/' + key).set({ created: Date.now(), displayName: name, expenses: {} });
+    }
+    enterRoom(key, name);
+  }).catch(() => showToast('❌ 連線失敗，請檢查 Firebase 設定'));
 }
 
-function joinRoom() {
-  const code = document.getElementById('joinCode').value.trim().toUpperCase();
-  if (!code || code.length < 4) { showToast('請輸入房間代碼'); return; }
-  db.ref('rooms/' + code).once('value').then(snap => {
-    if (snap.exists()) enterRoom(code);
-    else showToast('❌ 房間不存在');
-  });
-}
-
-function enterRoom(code) {
-  currentRoom = code;
-  localStorage.setItem('splitBillRoom', code);
-  // Update URL without reload
+function enterRoom(key, displayName) {
+  currentRoom = key;
+  const roomInfo = { key, displayName: displayName || key };
+  localStorage.setItem('splitBillRoom', JSON.stringify(roomInfo));
+  // Save to recent events
+  saveRecentEvent(roomInfo);
+  // Update URL
   const url = new URL(window.location);
-  url.searchParams.set('room', code);
+  url.searchParams.set('room', key);
   window.history.replaceState({}, '', url);
 
   document.getElementById('lobbyScreen').classList.add('hidden');
   document.getElementById('mainApp').classList.remove('hidden');
   document.getElementById('totalBar').classList.remove('hidden');
-  document.getElementById('roomCodeDisplay').textContent = code;
+  document.getElementById('roomCodeDisplay').textContent = displayName || decodeURIComponent(key);
 
-  dbRef = db.ref('rooms/' + code + '/expenses');
+  dbRef = db.ref('rooms/' + key + '/expenses');
   dbRef.on('value', snap => {
     const data = snap.val();
     expenses = data ? Object.values(data) : [];
@@ -474,11 +479,7 @@ function leaveRoom() {
   document.getElementById('lobbyScreen').classList.remove('hidden');
   document.getElementById('mainApp').classList.add('hidden');
   document.getElementById('totalBar').classList.add('hidden');
-}
-
-function copyRoomCode() {
-  navigator.clipboard.writeText(currentRoom)
-    .then(() => showToast('✅ 已複製代碼：' + currentRoom));
+  renderRecentEvents();
 }
 
 function copyShareLink() {
@@ -488,13 +489,57 @@ function copyShareLink() {
     .then(() => showToast('✅ 已複製分享連結'));
 }
 
+// Recent events in localStorage
+function saveRecentEvent(info) {
+  let list = JSON.parse(localStorage.getItem('splitBillRecent') || '[]');
+  list = list.filter(e => e.key !== info.key);
+  list.unshift(info);
+  if (list.length > 10) list = list.slice(0, 10);
+  localStorage.setItem('splitBillRecent', JSON.stringify(list));
+}
+
+function renderRecentEvents() {
+  const container = document.getElementById('recentEvents');
+  const list = JSON.parse(localStorage.getItem('splitBillRecent') || '[]');
+  if (!list.length) { container.innerHTML = ''; return; }
+  container.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;">
+      <div style="font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:12px;">📂 最近事件</div>
+      ${list.map(e => `
+        <div onclick="enterRoom('${e.key}','${(e.displayName||'').replace(/'/g,"\\'")}')"
+          style="padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:8px;"
+          onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <span style="color:var(--accent);font-size:1rem">📌</span>
+          <span style="font-weight:500">${e.displayName || decodeURIComponent(e.key)}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
 function checkAutoJoin() {
   const params = new URLSearchParams(window.location.search);
-  const code = params.get('room') || localStorage.getItem('splitBillRoom');
-  if (code) {
-    db.ref('rooms/' + code).once('value').then(snap => {
-      if (snap.exists()) enterRoom(code);
+  const urlRoom = params.get('room');
+  if (urlRoom) {
+    db.ref('rooms/' + urlRoom).once('value').then(snap => {
+      if (snap.exists()) {
+        const data = snap.val();
+        enterRoom(urlRoom, data.displayName || decodeURIComponent(urlRoom));
+      } else {
+        renderRecentEvents();
+      }
     });
+    return;
+  }
+  const saved = localStorage.getItem('splitBillRoom');
+  if (saved) {
+    try {
+      const info = JSON.parse(saved);
+      db.ref('rooms/' + info.key).once('value').then(snap => {
+        if (snap.exists()) enterRoom(info.key, info.displayName);
+        else renderRecentEvents();
+      });
+    } catch { renderRecentEvents(); }
+  } else {
+    renderRecentEvents();
   }
 }
 
@@ -511,9 +556,13 @@ function initUI() {
     const chip = document.createElement('div');
     chip.className = 'chip active';
     chip.dataset.name = p.name;
-    chip.innerHTML = `<div class="avatar" style="background:${p.color}">${p.name[0]}</div>${p.name}<div class="check">✓</div>`;
+    chip.innerHTML = `<div class="avatar">${AVATARS[p.name]}</div>${p.name}<div class="check">✓</div>`;
     chip.onclick = () => togglePerson(p.name, chip);
     grid.appendChild(chip);
+  });
+  // Enter key on event name
+  document.getElementById('eventName').addEventListener('keydown', e => {
+    if (e.key === 'Enter') enterEvent();
   });
   checkAutoJoin();
 }
@@ -564,6 +613,10 @@ function resetAll() {
 
 // === RENDER ===
 function getColor(name) { return PEOPLE.find(p => p.name === name)?.color || '#888'; }
+function miniAvatar(name, size) {
+  size = size || 32;
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;flex-shrink:0;border:1.5px solid var(--border)"><img src="images/${name}.png" alt="${name}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div>`;
+}
 
 function render() {
   renderRecords();
@@ -581,7 +634,7 @@ function renderRecords() {
   }
   list.innerHTML = expenses.slice().reverse().map(e => `
     <div class="record">
-      <div class="record-icon">🧾</div>
+      <div class="record-icon">${miniAvatar(e.payer, 44)}</div>
       <div class="record-info">
         <div class="title">${e.name}<span class="payer-badge">${e.payer} 付</span></div>
         <div class="people-tags">${e.people.map(p => `<span style="border-left:2px solid ${getColor(p)}">${p}</span>`).join('')}</div>
@@ -610,7 +663,7 @@ function renderSummary() {
     const bal = balances[p.name];
     const cls = bal >= 0 ? 'positive' : 'negative';
     const sign = bal >= 0 ? '+' : '';
-    return `<div class="summary-row"><div class="name"><div class="dot" style="background:${p.color}"></div>${p.name}</div><div class="amount ${cls}">${sign}$${Math.round(bal).toLocaleString()}</div></div>`;
+    return `<div class="summary-row"><div class="name">${miniAvatar(p.name, 36)}${p.name}</div><div class="amount ${cls}">${sign}$${Math.round(bal).toLocaleString()}</div></div>`;
   }).join('');
 }
 
@@ -641,10 +694,10 @@ function renderSettle() {
   if (!transfers.length) { list.innerHTML = '<div class="empty-state"><div class="icon">✅</div>大家都結清了！</div>'; return; }
   list.innerHTML = transfers.map(t => `
     <div class="settle-item">
-      <div style="width:10px;height:10px;border-radius:50%;background:${getColor(t.from)};flex-shrink:0"></div>
+      ${miniAvatar(t.from, 34)}
       <strong>${t.from}</strong>
       <span class="settle-arrow">→</span>
-      <div style="width:10px;height:10px;border-radius:50%;background:${getColor(t.to)};flex-shrink:0"></div>
+      ${miniAvatar(t.to, 34)}
       <strong>${t.to}</strong>
       <span class="settle-amount">$${t.amount.toLocaleString()}</span>
     </div>`).join('');
